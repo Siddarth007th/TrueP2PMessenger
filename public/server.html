@@ -1,0 +1,65 @@
+<!DOCTYPE html><html><head><title>Server Dashboard</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui;background:#0b141a;color:#e9edef;min-height:100vh}
+.top{padding:16px 24px;background:#202c33;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a2f32}
+.top h1{font-size:18px;font-weight:700}
+.link{color:#00a884;text-decoration:none;font-size:13px}
+.tabs{display:flex;padding:0 24px;background:#111b21;border-bottom:1px solid #2a2f32}
+.tab{padding:14px 28px;border:none;background:transparent;color:#8696a0;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid transparent;transition:all .2s}
+.tab.active{color:#00a884;border-bottom-color:#00a884}
+.tab:hover{color:#e9edef}
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;margin-left:6px}
+.bg{background:#005c4b;color:#00a884}
+.br{background:#3b1518;color:#ea4335}
+.sec{display:none;padding:24px}
+.sec.active{display:block}
+.desc{color:#8696a0;font-size:13px;margin-bottom:16px;padding:12px 16px;background:#111b21;border-radius:8px;border-left:3px solid #00a884}
+.desc.warn{border-left-color:#ea4335}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#202c33;padding:10px 12px;text-align:left;color:#00a884;position:sticky;top:0;z-index:1}
+td{padding:8px 12px;border-bottom:1px solid #1a2730}
+td.pt{color:#e9edef;font-weight:500}
+td.mono{font-family:'Courier New',monospace;font-size:11px;color:#8696a0;word-break:break-all}
+tr:hover td{background:#1a2730}
+.empty{padding:48px;text-align:center;color:#8696a0;font-size:14px}
+.sys-log{padding:12px 24px;background:#111b21;border-top:1px solid #2a2f32;font-size:12px;color:#8696a0;max-height:120px;overflow-y:auto}
+.sys-entry{padding:4px 0;border-bottom:1px solid #1a2730}
+</style></head><body>
+<div class="top">
+<h1 id="title">Server Dashboard</h1>
+<a class="link" href="/" target="_blank">← Open Chat</a>
+</div>
+<div class="tabs">
+<button class="tab active" onclick="showTab('mw',this)">My Work <span class="badge bg" id="mwc">0</span></button>
+<button class="tab" onclick="showTab('lk',this)">Locker <span class="badge br" id="lkc">0</span></button>
+</div>
+<div class="sec active" id="mw">
+<div class="desc">Messages involving this node — shown <b>decrypted</b> because this node holds the AES-256-GCM key</div>
+<div id="mwt"><div class="empty">No data yet — send a message from chat</div></div>
+</div>
+<div class="sec" id="lk">
+<div class="desc warn">Blind replications NOT involving this node — shown <b>encrypted</b> because this node does NOT hold the key</div>
+<div id="lkt"><div class="empty">No blind replications yet</div></div>
+</div>
+<div class="sys-log" id="log"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const s=io();
+s.on('init',d=>{document.getElementById('title').textContent=`Node ${d.name} — Server Dashboard`;document.title=`Node ${d.name} — Server`;});
+s.on('sys',t=>{const el=document.getElementById('log');el.innerHTML=`<div class="sys-entry">${t}</div>`+el.innerHTML;});
+s.on('mywork',rows=>{
+document.getElementById('mwc').textContent=rows.length;
+if(!rows.length){document.getElementById('mwt').innerHTML='<div class="empty">No data yet — send a message from chat</div>';return;}
+let h='<table><tr><th>ID</th><th>From</th><th>To</th><th>Decrypted Message</th></tr>';
+rows.forEach(r=>{h+=`<tr><td>${r.msgId.slice(0,8)}</td><td>${r.fromNode}</td><td>${r.toNode}</td><td class="pt">${r.plaintext}</td></tr>`;});
+h+='</table>';document.getElementById('mwt').innerHTML=h;
+});
+s.on('locker',rows=>{
+document.getElementById('lkc').textContent=rows.length;
+if(!rows.length){document.getElementById('lkt').innerHTML='<div class="empty">No blind replications yet</div>';return;}
+let h='<table><tr><th>ID</th><th>From</th><th>To</th><th>Nonce</th><th>Tag</th><th>Ciphertext (val)</th></tr>';
+rows.forEach(r=>{h+=`<tr><td>${r.msgId.slice(0,8)}</td><td>${r.fromNode}</td><td>${r.toNode}</td><td class="mono">${r.nonce}</td><td class="mono">${r.tag}</td><td class="mono">${r.val.slice(0,40)}…</td></tr>`;});
+h+='</table>';document.getElementById('lkt').innerHTML=h;
+});
+function showTab(id,btn){document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(id).classList.add('active');btn.classList.add('active');}
+</script></body></html>
