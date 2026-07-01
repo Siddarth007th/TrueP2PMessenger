@@ -1,6 +1,11 @@
 const {spawn,exec}=require('child_process'),path=require('path'),fs=require('fs');
-['A','B','C'].forEach(n=>{try{fs.unlinkSync(path.join(__dirname,`node-${n}.db`));}catch{}});
-const nodes=[['A','3001','4001','4002','4003'],['B','3002','4002','4001','4003'],['C','3003','4003','4001','4002']];
+['A','B','C','D'].forEach(n=>{try{fs.unlinkSync(path.join(__dirname,`node-${n}.db`));}catch{}});
+const nodes=[
+  ['A','3001','4001','4002','4003','4004'],
+  ['B','3002','4002','4001','4003','4004'],
+  ['C','3003','4003','4001','4002','4004'],
+  ['D','3004','4004','4001','4002','4003']
+];
 const go=i=>{
 if(i>=nodes.length)return;
 const n=nodes[i];

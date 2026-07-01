@@ -1,65 +1,559 @@
-<!DOCTYPE html><html><head><title>Server Dashboard</title><style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui;background:#0b141a;color:#e9edef;min-height:100vh}
-.top{padding:16px 24px;background:#202c33;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2a2f32}
-.top h1{font-size:18px;font-weight:700}
-.link{color:#00a884;text-decoration:none;font-size:13px}
-.tabs{display:flex;padding:0 24px;background:#111b21;border-bottom:1px solid #2a2f32}
-.tab{padding:14px 28px;border:none;background:transparent;color:#8696a0;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid transparent;transition:all .2s}
-.tab.active{color:#00a884;border-bottom-color:#00a884}
-.tab:hover{color:#e9edef}
-.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;margin-left:6px}
-.bg{background:#005c4b;color:#00a884}
-.br{background:#3b1518;color:#ea4335}
-.sec{display:none;padding:24px}
-.sec.active{display:block}
-.desc{color:#8696a0;font-size:13px;margin-bottom:16px;padding:12px 16px;background:#111b21;border-radius:8px;border-left:3px solid #00a884}
-.desc.warn{border-left-color:#ea4335}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{background:#202c33;padding:10px 12px;text-align:left;color:#00a884;position:sticky;top:0;z-index:1}
-td{padding:8px 12px;border-bottom:1px solid #1a2730}
-td.pt{color:#e9edef;font-weight:500}
-td.mono{font-family:'Courier New',monospace;font-size:11px;color:#8696a0;word-break:break-all}
-tr:hover td{background:#1a2730}
-.empty{padding:48px;text-align:center;color:#8696a0;font-size:14px}
-.sys-log{padding:12px 24px;background:#111b21;border-top:1px solid #2a2f32;font-size:12px;color:#8696a0;max-height:120px;overflow-y:auto}
-.sys-entry{padding:4px 0;border-bottom:1px solid #1a2730}
-</style></head><body>
-<div class="top">
-<h1 id="title">Server Dashboard</h1>
-<a class="link" href="/" target="_blank">← Open Chat</a>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Server Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #0b141a;
+  --panel:   #111b21;
+  --surface: #202c33;
+  --surface2:#2a3942;
+  --border:  #2a2f32;
+  --accent:  #00a884;
+  --muted:   #8696a0;
+  --text:    #e9edef;
+  --danger:  #ea4335;
+  --warn:    #ff9800;
+  --green:   #4caf50;
+  --blue:    #42a5f5;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  padding: 14px 24px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.node-badge {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+}
+.topbar h1 { font-size: 16px; font-weight: 700; flex: 1; }
+.open-chat { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 500; }
+
+/* TABS */
+.tab-bar {
+  display: flex;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+.tab {
+  padding: 14px 24px;
+  border: none; background: transparent;
+  color: var(--muted); cursor: pointer;
+  font-size: 13px; font-weight: 600; font-family: inherit;
+  border-bottom: 3px solid transparent;
+  transition: color 0.2s;
+  display: flex; align-items: center; gap: 8px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px;
+  border-radius: 10px; font-size: 11px; font-weight: 700; padding: 0 5px;
+}
+.badge-green { background: rgba(0,168,132,.2); color: var(--accent); }
+.badge-red   { background: rgba(234,67,53,.2);  color: var(--danger); }
+.badge-orange{ background: rgba(255,152,0,.2);  color: var(--warn); }
+
+/* SECTIONS */
+.section { display: none; flex: 1; flex-direction: column; }
+.section.active { display: flex; }
+
+/* INFO BANNER */
+.info-banner {
+  margin: 16px 24px 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.info-banner.green { background: rgba(0,168,132,.08); border: 1px solid rgba(0,168,132,.2); color: #a5d6a7; }
+.info-banner.red   { background: rgba(234,67,53,.08);  border: 1px solid rgba(234,67,53,.2);  color: #ef9a9a; }
+
+.info-banner-icon  { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+/* TABLE */
+.table-wrap { padding: 16px 24px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--surface); padding: 10px 14px; text-align: left; color: var(--accent); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; position: sticky; top: 0; z-index: 1; }
+td { padding: 10px 14px; border-bottom: 1px solid #1a2730; }
+td.plain-text { color: var(--text); font-weight: 500; }
+td.cipher     { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 11px; color: var(--muted); word-break: break-all; }
+td .from-node { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-d, #005c4b); color: var(--accent); font-size: 11px; font-weight: 700; }
+tr:hover td { background: #1a2730; }
+.empty-row { padding: 40px 24px; text-align: center; color: var(--muted); font-size: 14px; }
+
+/* ── THREAT MONITOR TAB ────────────────────────────── */
+.threat-section { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+
+/* Vault health card */
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.health-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.health-card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.health-card-value { font-size: 28px; font-weight: 700; }
+.health-card-sub   { font-size: 12px; color: var(--muted); }
+.health-card.ok     .health-card-value { color: var(--accent); }
+.health-card.threat .health-card-value { color: var(--danger); }
+.health-card.warn   .health-card-value { color: var(--warn); }
+.health-card.info   .health-card-value { color: var(--blue); }
+
+/* Threat explanation */
+.explainer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+.explainer h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.explainer-steps { display: flex; flex-direction: column; gap: 10px; }
+.step {
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent);
+  color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.step-text { font-size: 13px; line-height: 1.5; color: var(--muted); }
+.step-text strong { color: var(--text); }
+
+/* Action buttons */
+.action-row { display: flex; gap: 10px; }
+.btn {
+  padding: 10px 20px; border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 600; font-family: inherit;
+  cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; gap: 8px;
+}
+.btn-danger  { background: rgba(234,67,53,.15); color: var(--danger); border: 1px solid rgba(234,67,53,.3); }
+.btn-danger:hover  { background: rgba(234,67,53,.25); }
+.btn-action  { background: rgba(0,168,132,.15); color: var(--accent); border: 1px solid rgba(0,168,132,.3); }
+.btn-action:hover  { background: rgba(0,168,132,.25); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Timeline */
+.timeline { display: flex; flex-direction: column; gap: 1px; }
+.timeline-header { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+
+.timeline-event {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 10px 14px; border-radius: 8px;
+  font-size: 13px; position: relative;
+}
+.timeline-event + .timeline-event { margin-top: 4px; }
+.tl-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+.tl-content { flex: 1; }
+.tl-title { font-weight: 600; line-height: 1.3; }
+.tl-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tl-time  { font-size: 11px; color: var(--muted); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; }
+
+.ev-threat   { background: rgba(234,67,53,.08); border: 1px solid rgba(234,67,53,.15); }
+.ev-threat .tl-title { color: var(--danger); }
+.ev-route    { background: rgba(255,152,0,.06); border: 1px solid rgba(255,152,0,.1); }
+.ev-route .tl-title  { color: var(--warn); }
+.ev-ok       { background: rgba(0,168,132,.07); border: 1px solid rgba(0,168,132,.12); }
+.ev-ok .tl-title     { color: var(--accent); }
+.ev-replicate { background: rgba(66,165,245,.07); border: 1px solid rgba(66,165,245,.12); }
+.ev-replicate .tl-title { color: var(--blue); }
+
+.no-events { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; background: var(--surface); border-radius: 10px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="node-badge" id="node-badge">?</div>
+  <h1 id="page-title">Server Dashboard</h1>
+  <a class="open-chat" href="/" target="_blank">← Open Chat</a>
 </div>
-<div class="tabs">
-<button class="tab active" onclick="showTab('mw',this)">My Work <span class="badge bg" id="mwc">0</span></button>
-<button class="tab" onclick="showTab('lk',this)">Locker <span class="badge br" id="lkc">0</span></button>
+
+<!-- TABS -->
+<div class="tab-bar">
+  <button class="tab active" onclick="showTab('mywork',this)">
+    My Work <span class="badge badge-green" id="mw-count">0</span>
+  </button>
+  <button class="tab" onclick="showTab('locker',this)">
+    Locker <span class="badge badge-red" id="lk-count">0</span>
+  </button>
+  <button class="tab" onclick="showTab('threat',this)">
+    Threat Monitor <span class="badge badge-orange" id="tm-count">0</span>
+  </button>
 </div>
-<div class="sec active" id="mw">
-<div class="desc">Messages involving this node — shown <b>decrypted</b> because this node holds the AES-256-GCM key</div>
-<div id="mwt"><div class="empty">No data yet — send a message from chat</div></div>
+
+<!-- MY WORK -->
+<div class="section active" id="mywork">
+  <div class="info-banner green">
+    <span class="info-banner-icon">🔓</span>
+    <span>Messages <strong>involving this node</strong> — decrypted and readable because this node holds the correct AES-256-GCM key. Only the two nodes in each conversation ever have this key.</span>
+  </div>
+  <div class="table-wrap" id="mw-body">
+    <div class="empty-row">No messages yet — send one from the chat UI</div>
+  </div>
 </div>
-<div class="sec" id="lk">
-<div class="desc warn">Blind replications NOT involving this node — shown <b>encrypted</b> because this node does NOT hold the key</div>
-<div id="lkt"><div class="empty">No blind replications yet</div></div>
+
+<!-- LOCKER -->
+<div class="section" id="locker">
+  <div class="info-banner red">
+    <span class="info-banner-icon">🔐</span>
+    <span><strong>Blind replications</strong> — messages stored by this node on behalf of other nodes. This node does NOT hold the AES key for these conversations, so the data is permanently unreadable here. It serves as a distributed backup.</span>
+  </div>
+  <div class="table-wrap" id="lk-body">
+    <div class="empty-row">No blind replications yet</div>
+  </div>
 </div>
-<div class="sys-log" id="log"></div>
+
+<!-- THREAT MONITOR -->
+<div class="section" id="threat">
+  <div class="threat-section">
+
+    <!-- Health Cards -->
+    <div class="health-grid">
+      <div class="health-card ok" id="vault-card">
+        <div class="health-card-label">Vault Records</div>
+        <div class="health-card-value" id="vault-count">—</div>
+        <div class="health-card-sub">Owned messages in vault</div>
+      </div>
+      <div class="health-card ok" id="threat-card">
+        <div class="health-card-label">Threat Status</div>
+        <div class="health-card-value" id="threat-val">✓ Safe</div>
+        <div class="health-card-sub" id="threat-sub">No anomalies detected</div>
+      </div>
+      <div class="health-card ok" id="rec-card">
+        <div class="health-card-label">Records Recovered</div>
+        <div class="health-card-value" id="rec-val">0</div>
+        <div class="health-card-sub">Via onion-routed recovery</div>
+      </div>
+      <div class="health-card info" id="rep-card">
+        <div class="health-card-label">Replication Factor</div>
+        <div class="health-card-value" id="rep-val">×1</div>
+        <div class="health-card-sub" id="rep-sub">Locker copies across mesh</div>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="explainer">
+      <h3>🧅 How the Adaptive Self-Healing Protocol Works</h3>
+      <div class="explainer-steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text"><strong>Smart Threat Simulation</strong> — The "Simulate Smart Wipe" button deletes records from BOTH your My Work (owned messages) AND your Locker (blind vault copies). This simulates an intelligent attacker who targets all data, not just your own messages.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text"><strong>Dual Anomaly Detection</strong> — Every 5 seconds, the anomaly detector compares the live database against two separate registries: one for My Work, one for Locker. If records vanish from either without a cryptographic signature, separate threat events fire immediately.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text"><strong>Onion-Routed Recovery</strong> — Missing IDs are wrapped in 3-layer AES-256-GCM onion encryption and routed through the peer mesh. My Work data is recovered from peers who hold blind copies. Locker data is recovered from the nodes who are actually party to those conversations.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-text"><strong>Exponential Vault Replication (2→4→8)</strong> — After each threat, the replication factor DOUBLES. Recovered data is spread across ALL peer lockers via onion routing. With a 4-node mesh (A, B, C, D), data gets replicated to every peer — ensuring maximum redundancy.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-text"><strong>Rehydration</strong> — Encrypted rows return through the reverse onion path, are re-inserted into the vault, and decrypted with ECDH keys. Chat updates without page refresh. Locker rows are restored as opaque ciphertext.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Recovery Scan + buttons -->
+    <div class="explainer">
+      <h3>🔍 Manual Controls</h3>
+      <div class="explainer-steps">
+        <div class="step">
+          <div class="step-num">?</div>
+          <div class="step-text"><strong>Smart Wipe</strong> targets BOTH My Work AND Locker — simulating an attacker who knows about blind vault copies. <strong>Manual Recovery Scan</strong> triggers an immediate cross-check and onion-routed recovery.</div>
+        </div>
+      </div>
+      <div class="action-row" style="margin-top:14px">
+        <button class="btn btn-danger" id="wipe-btn" onclick="simulateWipe()">
+          🗑️ Simulate Smart Wipe
+        </button>
+        <button class="btn btn-action" id="scan-btn" onclick="triggerScan()">
+          🔍 Manual Recovery Scan
+        </button>
+      </div>
+    </div>
+
+    <!-- Live threat timeline -->
+    <div>
+      <div class="timeline-header">Live Threat & Recovery Timeline</div>
+      <div class="timeline" id="timeline">
+        <div class="no-events">No events yet — try simulating a wipe to see the recovery protocol in action</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SYS LOG (small footer) -->
+<div style="padding:8px 24px;background:var(--panel);border-top:1px solid var(--border);font-size:11px;color:var(--muted);max-height:80px;overflow-y:auto;font-family:'JetBrains Mono',monospace" id="syslog"></div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const s=io();
-s.on('init',d=>{document.getElementById('title').textContent=`Node ${d.name} — Server Dashboard`;document.title=`Node ${d.name} — Server`;});
-s.on('sys',t=>{const el=document.getElementById('log');el.innerHTML=`<div class="sys-entry">${t}</div>`+el.innerHTML;});
-s.on('mywork',rows=>{
-document.getElementById('mwc').textContent=rows.length;
-if(!rows.length){document.getElementById('mwt').innerHTML='<div class="empty">No data yet — send a message from chat</div>';return;}
-let h='<table><tr><th>ID</th><th>From</th><th>To</th><th>Decrypted Message</th></tr>';
-rows.forEach(r=>{h+=`<tr><td>${r.msgId.slice(0,8)}</td><td>${r.fromNode}</td><td>${r.toNode}</td><td class="pt">${r.plaintext}</td></tr>`;});
-h+='</table>';document.getElementById('mwt').innerHTML=h;
+const sock = io();
+let myWorkRows = [], lockerRows = [];
+let vaultCount = 0, totalRecovered = 0, threatCount = 0;
+let timelineEvents = [];
+
+function fmt(ts) {
+  return new Date(ts || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+sock.on('init', d => {
+  document.getElementById('node-badge').textContent = d.name;
+  document.getElementById('page-title').textContent = `Node ${d.name} — Server Dashboard`;
+  document.title = `Node ${d.name} — Server`;
 });
-s.on('locker',rows=>{
-document.getElementById('lkc').textContent=rows.length;
-if(!rows.length){document.getElementById('lkt').innerHTML='<div class="empty">No blind replications yet</div>';return;}
-let h='<table><tr><th>ID</th><th>From</th><th>To</th><th>Nonce</th><th>Tag</th><th>Ciphertext (val)</th></tr>';
-rows.forEach(r=>{h+=`<tr><td>${r.msgId.slice(0,8)}</td><td>${r.fromNode}</td><td>${r.toNode}</td><td class="mono">${r.nonce}</td><td class="mono">${r.tag}</td><td class="mono">${r.val.slice(0,40)}…</td></tr>`;});
-h+='</table>';document.getElementById('lkt').innerHTML=h;
+
+sock.on('sys', msg => {
+  const el = document.getElementById('syslog');
+  el.innerHTML = `<div>[${fmt()}] ${msg}</div>` + el.innerHTML;
 });
-function showTab(id,btn){document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(id).classList.add('active');btn.classList.add('active');}
-</script></body></html>
+
+// ── MY WORK ──────────────────────────────────────────────────────────────────
+sock.on('mywork', rows => {
+  myWorkRows = rows;
+  vaultCount = rows.length;
+  document.getElementById('mw-count').textContent = rows.length;
+  document.getElementById('vault-count').textContent = rows.length;
+
+  const el = document.getElementById('mw-body');
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-row">No messages yet — send one from the chat UI</div>';
+    return;
+  }
+  let h = `<table>
+    <tr><th>ID</th><th>From</th><th>To</th><th>Decrypted Message</th></tr>`;
+  rows.forEach(r => {
+    h += `<tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">${r.msgId.slice(0,8)}</td>
+      <td><span class="from-node">${r.fromNode}</span></td>
+      <td><span class="from-node">${r.toNode}</span></td>
+      <td class="plain-text">${escHtml(r.plaintext)}</td>
+    </tr>`;
+  });
+  h += '</table>';
+  el.innerHTML = h;
+});
+
+// ── LOCKER ───────────────────────────────────────────────────────────────────
+sock.on('locker', rows => {
+  lockerRows = rows;
+  document.getElementById('lk-count').textContent = rows.length;
+
+  const el = document.getElementById('lk-body');
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-row">No blind replications yet</div>';
+    return;
+  }
+  let h = `<table>
+    <tr><th>ID</th><th>From</th><th>To</th><th>Nonce</th><th>Auth Tag</th><th>Ciphertext</th></tr>`;
+  rows.forEach(r => {
+    h += `<tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)">${r.msgId.slice(0,8)}</td>
+      <td><span class="from-node">${r.fromNode}</span></td>
+      <td><span class="from-node">${r.toNode}</span></td>
+      <td class="cipher">${r.nonce.slice(0,16)}…</td>
+      <td class="cipher">${r.tag.slice(0,16)}…</td>
+      <td class="cipher">${r.val.slice(0,36)}…</td>
+    </tr>`;
+  });
+  h += '</table>';
+  el.innerHTML = h;
+});
+
+// ── THREAT MONITOR EVENTS ─────────────────────────────────────────────────────
+sock.on('ANOMALY_DETECTED', data => {
+  threatCount++;
+  document.getElementById('tm-count').textContent = threatCount;
+
+  setThreatCard('threat', '⚠ Threat', `${data.missingIds.length} My Work record${data.missingIds.length > 1 ? 's' : ''} missing`);
+
+  addEvent('threat',
+    `⚠️ My Work Threat — ${data.missingIds.length} unsigned deletion${data.missingIds.length > 1 ? 's' : ''}`,
+    `Record IDs: ${data.missingIds.map(i => i.slice(0,8)).join(', ')} — No cryptographic signature found`,
+    data.timestamp
+  );
+});
+
+sock.on('LOCKER_ANOMALY', data => {
+  threatCount++;
+  document.getElementById('tm-count').textContent = threatCount;
+
+  addEvent('threat',
+    `⚠️ Locker Under Attack — ${data.missingIds.length} blind vault record${data.missingIds.length > 1 ? 's' : ''} wiped`,
+    `Locker IDs: ${data.missingIds.map(i => i.slice(0,8)).join(', ')} — Attacker targeted blind vault copies`,
+    data.timestamp
+  );
+});
+
+sock.on('RECOVERY_COMPLETE', data => {
+  const n = (data.recoveredMessages || []).length;
+  if (n === 0) return;
+  addEvent('route',
+    `🧅 Onion Recovery Routing Complete`,
+    `${n} encrypted My Work record${n > 1 ? 's' : ''} retrieved via multi-hop relay from peer vault`,
+    Date.now()
+  );
+});
+
+sock.on('LOCKER_RECOVERY_COMPLETE', data => {
+  if (data.recovered === 0) return;
+  addEvent('ok',
+    `✅ Locker Restored — ${data.recovered} Blind Vault Record${data.recovered !== 1 ? 's' : ''}`,
+    `Blind vault ciphertext recovered from peer nodes and re-inserted into local locker`,
+    data.timestamp
+  );
+});
+
+sock.on('REHYDRATION_STATS', data => {
+  totalRecovered += data.recovered;
+  document.getElementById('rec-val').textContent = totalRecovered;
+
+  if (data.type !== 'locker' && data.failed === 0) {
+    setThreatCard('ok', '✓ Healed', `${data.recovered} record${data.recovered !== 1 ? 's' : ''} restored`);
+  }
+
+  if (data.type !== 'locker') {
+    addEvent('ok',
+      `✅ Self-Healing Complete — ${data.recovered} Record${data.recovered !== 1 ? 's' : ''} Restored`,
+      `Messages re-inserted into vault and decrypted with ECDH-derived AES key. Chat UI updated without page refresh.`,
+      data.timestamp
+    );
+  }
+});
+
+sock.on('REPLICATION_STATUS', data => {
+  document.getElementById('rep-val').textContent = `×${data.factor}`;
+  if (data.factor > 1) {
+    document.getElementById('rep-sub').textContent = `Doubled ${Math.log2(data.factor)} time${Math.log2(data.factor) !== 1 ? 's' : ''} due to threats`;
+    const card = document.getElementById('rep-card');
+    card.className = 'health-card warn';
+  }
+});
+
+sock.on('REPLICATION_SPREAD', data => {
+  addEvent('replicate',
+    `📡 Vault Replicated — ×${data.factor} Factor → ${data.peers} Peers`,
+    `${data.rows} record(s) spread across ${data.peers} peer locker(s) via onion routing for maximum redundancy`,
+    data.timestamp
+  );
+});
+
+sock.on('REPLICATION_RECEIVED', data => {
+  addEvent('replicate',
+    `📡 Replication Received from Node ${data.from}`,
+    `${data.stored} new record(s) stored in local locker as blind vault copies`,
+    data.timestamp
+  );
+});
+
+function setThreatCard(type, val, sub) {
+  const card = document.getElementById('threat-card');
+  card.className = `health-card ${type}`;
+  document.getElementById('threat-val').textContent = val;
+  document.getElementById('threat-sub').textContent = sub;
+}
+
+function addEvent(type, title, sub, ts) {
+  timelineEvents.unshift({ type, title, sub, time: fmt(ts) });
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const el = document.getElementById('timeline');
+  if (!timelineEvents.length) {
+    el.innerHTML = '<div class="no-events">No events yet — try simulating a wipe to see the recovery protocol in action</div>';
+    return;
+  }
+  el.innerHTML = timelineEvents.map(e => `
+    <div class="timeline-event ev-${e.type}">
+      <div class="tl-content">
+        <div class="tl-title">${e.title}</div>
+        <div class="tl-sub">${e.sub}</div>
+      </div>
+      <div class="tl-time">${e.time}</div>
+    </div>`).join('');
+}
+
+// ── BUTTONS ──────────────────────────────────────────────────────────────────
+function simulateWipe() {
+  const btn = document.getElementById('wipe-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Wiping…';
+  setThreatCard('threat', '⚠ Wiped', 'Simulating smart wipe (My Work + Locker)');
+  addEvent('threat', '🗑️ Smart Wipe Simulated', 'Records deleted from BOTH My Work AND Locker without cryptographic signature — dual anomaly detectors will fire within 5 seconds', Date.now());
+  sock.emit('simulate-wipe');
+  setTimeout(() => { btn.disabled = false; btn.innerHTML = '🗑️ Simulate Smart Wipe'; }, 3000);
+  showTab('threat', document.querySelectorAll('.tab')[2]);
+}
+
+function triggerScan() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning…';
+  addEvent('route', '🔍 Manual Recovery Scan Triggered', 'Cross-checking all known message IDs against the live database — onion recovery launches for any missing records', Date.now());
+  sock.emit('trigger-recovery');
+  setTimeout(() => { btn.disabled = false; btn.innerHTML = '🔍 Manual Recovery Scan'; }, 4000);
+}
+
+// ── TABS ─────────────────────────────────────────────────────────────────────
+function showTab(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

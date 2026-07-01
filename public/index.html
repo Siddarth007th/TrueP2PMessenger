@@ -1,53 +1,448 @@
-<!DOCTYPE html><html><head><title>P2P Chat</title><style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui;display:flex;height:100vh;background:#0b141a;color:#e9edef}
-.left{width:240px;background:#111b21;display:flex;flex-direction:column;border-right:1px solid #2a2f32}
-.right{flex:1;display:flex;flex-direction:column;background:#0b141a}
-.hdr{padding:16px;background:#202c33;font-weight:700;font-size:15px;border-bottom:1px solid #2a2f32;display:flex;align-items:center;justify-content:space-between}
-.link{color:#00a884;text-decoration:none;font-size:12px;font-weight:400}
-.contacts{flex:1;padding:8px;overflow-y:auto}
-.contact{display:block;width:100%;padding:12px;margin:4px 0;border:none;border-radius:8px;background:#202c33;color:#e9edef;cursor:pointer;text-align:left;font-size:14px}
-.contact:hover:not(:disabled){background:#2a3942}
-.contact.active{background:#005c4b}
-.contact:disabled{opacity:.4;cursor:not-allowed}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
-.green{background:#00a884}.red{background:#ea0038}
-.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px}
-.msg{padding:8px 12px;border-radius:8px;max-width:75%;font-size:14px;line-height:1.4}
-.msg.in{background:#202c33;align-self:flex-start}
-.msg.out{background:#005c4b;align-self:flex-end}
-.msg.sys{background:rgba(32,44,51,.8);align-self:center;font-size:12px;color:#8696a0;border-radius:12px;padding:4px 12px}
-.msg b{color:#00a884;font-size:12px}
-.inp{display:flex;gap:8px;padding:12px;background:#202c33}
-input{flex:1;padding:10px 14px;border:none;border-radius:8px;background:#2a3942;color:#e9edef;font-size:14px;outline:none}
-input:disabled{opacity:.4;cursor:not-allowed}
-input::placeholder{color:#8696a0}
-button{padding:10px 18px;border:none;border-radius:8px;background:#00a884;color:#fff;font-weight:600;cursor:pointer;font-size:14px}
-button:disabled{background:#2a3942;color:#8696a0;cursor:not-allowed}
-</style></head><body>
-<div class="left">
-<div class="hdr"><span id="nn">...</span><a class="link" href="/server.html" target="_blank">Server →</a></div>
-<div class="contacts" id="ct"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2P Chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0b141a;
+  --panel:    #111b21;
+  --surface:  #202c33;
+  --surface2: #2a3942;
+  --border:   #2a2f32;
+  --accent:   #00a884;
+  --accent-d: #005c4b;
+  --muted:    #8696a0;
+  --text:     #e9edef;
+  --danger:   #ea4335;
+  --warn:     #ff9800;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  display: flex; height: 100vh;
+  background: var(--bg); color: var(--text);
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────── */
+.sidebar {
+  width: 260px; background: var(--panel);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border); flex-shrink: 0;
+}
+.sidebar-header {
+  padding: 16px; background: var(--surface);
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.node-id {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 700;
+}
+.node-badge {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+}
+.server-link {
+  color: var(--accent); text-decoration: none;
+  font-size: 12px; font-weight: 500;
+  padding: 4px 8px; border-radius: 6px; transition: background 0.15s;
+}
+.server-link:hover { background: var(--surface2); }
+
+.contacts-label {
+  padding: 10px 16px 4px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--muted);
+}
+.contacts { flex: 1; overflow-y: auto; padding: 4px 8px; }
+
+.contact {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 12px; margin: 2px 0;
+  border: none; border-radius: 10px; background: transparent;
+  color: var(--text); cursor: pointer; text-align: left;
+  font-size: 14px; font-family: inherit; font-weight: 500;
+  transition: background 0.15s;
+}
+.contact:hover:not(:disabled) { background: var(--surface); }
+.contact.active { background: var(--accent-d); }
+.contact:disabled { opacity: 0.4; cursor: not-allowed; }
+.c-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface2); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.c-avatar.grp { background: var(--accent-d); color: var(--accent); font-size: 16px; }
+.c-info { flex: 1; min-width: 0; }
+.c-name   { font-size: 14px; font-weight: 600; }
+.c-status { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.dot.on  { background: var(--accent); box-shadow: 0 0 0 2px rgba(0,168,132,.2); }
+.dot.off { background: var(--danger); }
+
+/* ── CHAT AREA ──────────────────────────────────── */
+.chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.chat-header {
+  padding: 12px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+}
+.ch-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface2);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.ch-name { font-size: 15px; font-weight: 700; }
+.ch-sub  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+
+/* messages container — NEVER set innerHTML directly, use insertions */
+.messages {
+  flex: 1; overflow-y: auto;
+  padding: 16px 20px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+/* empty placeholder (lives OUTSIDE messages, toggled by class) */
+.empty-placeholder {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--muted); gap: 10px; padding: 40px;
+}
+.empty-placeholder .ep-icon { font-size: 40px; opacity: 0.5; }
+.empty-placeholder .ep-title { font-size: 16px; font-weight: 600; }
+.empty-placeholder .ep-sub   { font-size: 13px; text-align: center; max-width: 220px; line-height: 1.5; }
+
+/* message rows */
+.msg-row { display: flex; flex-direction: column; }
+.msg-row.out { align-items: flex-end; }
+.msg-row.in  { align-items: flex-start; }
+.msg-row.center { align-items: center; }
+
+.msg-sender { font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 2px; padding: 0 2px; }
+
+.bubble {
+  max-width: 68%; padding: 8px 12px; border-radius: 10px;
+  font-size: 14px; line-height: 1.45; word-break: break-word;
+}
+.msg-row.in  .bubble { background: var(--surface);  border-radius: 2px 10px 10px 10px; }
+.msg-row.out .bubble { background: var(--accent-d); border-radius: 10px 2px 10px 10px; }
+
+.msg-time { font-size: 10px; color: var(--muted); margin-top: 2px; padding: 0 2px; }
+
+/* pill messages */
+.pill {
+  max-width: 80%; padding: 4px 14px; border-radius: 999px;
+  font-size: 12px; text-align: center; margin: 4px 0;
+}
+.pill.sys { background: rgba(32,44,51,.8); color: var(--muted); }
+
+/* input bar */
+.input-bar {
+  display: flex; gap: 10px; padding: 12px 16px;
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+.msg-input {
+  flex: 1; padding: 10px 16px; border: none; border-radius: 24px;
+  background: var(--surface2); color: var(--text);
+  font-size: 14px; font-family: inherit; outline: none; transition: background 0.15s;
+}
+.msg-input::placeholder { color: var(--muted); }
+.msg-input:focus { background: #323f49; }
+.msg-input:disabled { opacity: 0.4; cursor: not-allowed; }
+.send-btn {
+  width: 40px; height: 40px; border-radius: 50%; border: none;
+  background: var(--accent); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; flex-shrink: 0; transition: background 0.15s, transform 0.1s;
+}
+.send-btn:hover:not(:disabled) { background: #00c49b; transform: scale(1.05); }
+.send-btn:active:not(:disabled){ transform: scale(0.95); }
+.send-btn:disabled { background: var(--surface2); cursor: not-allowed; }
+
+/* waiting overlay */
+#overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(11,20,26,.88); backdrop-filter: blur(4px);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+}
+.spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid var(--surface2); border-top-color: var(--accent);
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.ov-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.ov-sub   { font-size: 12px; color: var(--muted); }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="node-id">
+      <div class="node-badge" id="node-badge">?</div>
+      <span id="node-name">Connecting…</span>
+    </div>
+    <a class="server-link" href="/server.html" target="_blank">Server →</a>
+  </div>
+  <div class="contacts-label">Peers</div>
+  <div class="contacts" id="contacts"></div>
 </div>
-<div class="right">
-<div class="hdr" id="ch">Select a peer to begin</div>
-<div class="msgs" id="msgs"></div>
-<div class="inp">
-<input id="i" disabled placeholder="Select a peer first...">
-<button id="b" disabled onclick="send()">Send</button>
+
+<div class="chat-area">
+  <!-- header — hidden until a chat is opened -->
+  <div class="chat-header" id="chat-header" style="display:none">
+    <div class="ch-avatar" id="ch-avatar"></div>
+    <div>
+      <div class="ch-name" id="ch-name"></div>
+      <div class="ch-sub">End-to-end encrypted · AES-256-GCM</div>
+    </div>
+  </div>
+
+
+
+  <!-- empty state (OUTSIDE .messages, toggled with display) -->
+  <div class="empty-placeholder" id="empty-state">
+    <div class="ep-icon">🔒</div>
+    <div class="ep-title">Secure Mesh Ready</div>
+    <div class="ep-sub">Select a peer from the left to start an end-to-end encrypted conversation</div>
+  </div>
+
+  <!-- messages list — rendered by JS, never contains #empty-state -->
+  <div class="messages" id="messages" style="display:none"></div>
+
+  <div class="input-bar">
+    <input class="msg-input" id="msg-input" disabled placeholder="Select a peer first…">
+    <button class="send-btn" id="send-btn" disabled onclick="send()" title="Send">➤</button>
+  </div>
 </div>
+
+<!-- waiting overlay (removed once all ECDH handshakes complete) -->
+<div id="overlay">
+  <div class="spinner"></div>
+  <div class="ov-title" id="ov-title">Establishing mesh…</div>
+  <div class="ov-sub">Exchanging secp256k1 ECDH keys</div>
 </div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const s=io();let me='',ac=null,rp=new Set(),mr=false,ap=[],cm={};
-s.on('init',d=>{me=d.name;document.title=`Node ${me} — Chat`;document.getElementById('nn').textContent=`Node ${me}`;ap=['A','B','C'].filter(x=>x!==me);ap.forEach(p=>cm[p]=[]);cm['GROUP']=[];rc();});
-s.on('peer-ready',p=>{rp.add(p);rc();});
-s.on('mesh-ready',()=>{mr=true;rc();});
-s.on('sys',t=>{const el=document.getElementById('msgs');el.innerHTML+=`<div class="msg sys">${t}</div>`;el.scrollTop=el.scrollHeight;});
-s.on('chat-msg',m=>{let ch;if(m.group)ch='GROUP';else if(m.from==='Me')ch=m.to;else ch=m.from;if(!cm[ch])cm[ch]=[];cm[ch].push(m);if(ac===ch)rm();});
-function rc(){let h='';ap.forEach(p=>{const r=rp.has(p);h+=`<button class="contact ${ac===p?'active':''}" ${r?'':'disabled'} onclick="pick('${p}')"><span class="dot ${r?'green':'red'}"></span>Node ${p}</button>`;});if(mr)h+=`<button class="contact ${ac==='GROUP'?'active':''}" onclick="pick('GROUP')"><span class="dot green"></span>Group Chat</button>`;document.getElementById('ct').innerHTML=h;}
-function pick(t){ac=t;rc();rm();document.getElementById('i').disabled=false;document.getElementById('b').disabled=false;document.getElementById('i').placeholder=t==='GROUP'?'Group message...':'Message Node '+t+'...';document.getElementById('ch').textContent=t==='GROUP'?'Group Chat':'Chat with Node '+t;document.getElementById('i').focus();}
-function rm(){if(!ac)return;const arr=cm[ac]||[];let h='';arr.forEach(m=>{const out=m.from==='Me';h+=`<div class="msg ${out?'out':'in'}"><b>${m.from}${m.group?' (Group)':''}</b><br>${m.text}</div>`;});const el=document.getElementById('msgs');el.innerHTML=h;el.scrollTop=el.scrollHeight;}
-function send(){const inp=document.getElementById('i'),t=inp.value.trim();if(!t||!ac)return;if(ac==='GROUP')s.emit('send-group',{text:t});else s.emit('send-dm',{to:ac,text:t});inp.value='';inp.focus();}
-document.getElementById('i').addEventListener('keypress',e=>{if(e.key==='Enter')send();});
-</script></body></html>
+const sock = io();
+
+let me = '', activeChat = null;
+let readyPeers = new Set(), meshReady = false, allPeers = [];
+
+// Per-channel message arrays: cm[peer] = [{type, from, text, time, msgId?, recovered?}]
+const cm = {};
+
+function now() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── INIT ─────────────────────────────────────────────────────── */
+sock.on('init', d => {
+  me = d.name;
+  document.title = `Node ${me} — Chat`;
+  document.getElementById('node-name').textContent = `Node ${me}`;
+  document.getElementById('node-badge').textContent = me;
+  allPeers = ['A','B','C','D'].filter(x => x !== me);
+  allPeers.forEach(p => cm[p] = []);
+  cm['GROUP'] = [];
+  renderContacts();
+});
+
+sock.on('peer-ready', p => { readyPeers.add(p); renderContacts(); checkOverlay(); });
+sock.on('mesh-ready', () => { meshReady = true; renderContacts(); checkOverlay(); });
+
+function checkOverlay() {
+  if (readyPeers.size >= allPeers.length) {
+    document.getElementById('overlay').style.display = 'none';
+  } else {
+    const n = allPeers.length - readyPeers.size;
+    document.getElementById('ov-title').textContent =
+      `Waiting for ${n} peer${n !== 1 ? 's' : ''} to handshake…`;
+  }
+}
+
+/* ── CONTACTS ─────────────────────────────────────────────────── */
+function renderContacts() {
+  let h = '';
+  allPeers.forEach(p => {
+    const on = readyPeers.has(p);
+    h += `<button class="contact${activeChat===p?' active':''}" ${on?'':'disabled'} onclick="openChat('${p}')">
+      <div class="c-avatar">${p}</div>
+      <div class="c-info">
+        <div class="c-name">Node ${p}</div>
+        <div class="c-status">${on ? 'Online · E2EE ready' : 'Connecting…'}</div>
+      </div>
+      <div class="dot ${on?'on':'off'}"></div>
+    </button>`;
+  });
+  if (meshReady) {
+    h += `<button class="contact${activeChat==='GROUP'?' active':''}" onclick="openChat('GROUP')">
+      <div class="c-avatar grp">👥</div>
+      <div class="c-info">
+        <div class="c-name">Group Chat</div>
+        <div class="c-status">All nodes · Broadcast</div>
+      </div>
+      <div class="dot on"></div>
+    </button>`;
+  }
+  document.getElementById('contacts').innerHTML = h;
+}
+
+/* ── OPEN CHAT ────────────────────────────────────────────────── */
+function openChat(peer) {
+  activeChat = peer;
+  renderContacts();
+
+  // Show header
+  const hdr = document.getElementById('chat-header');
+  hdr.style.display = 'flex';
+  document.getElementById('ch-avatar').textContent = peer === 'GROUP' ? '👥' : peer;
+  document.getElementById('ch-name').textContent   = peer === 'GROUP' ? 'Group Chat' : `Node ${peer}`;
+
+  // Enable input
+  const inp = document.getElementById('msg-input');
+  inp.disabled = false;
+  inp.placeholder = peer === 'GROUP' ? 'Group message…' : `Message Node ${peer}…`;
+  document.getElementById('send-btn').disabled = false;
+
+  // Hide empty-state, show messages panel
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('messages').style.display = 'flex';
+
+  renderMessages();
+  inp.focus();
+}
+
+/* ── RENDER MESSAGES ──────────────────────────────────────────── */
+// Builds HTML from cm[activeChat] and sets it on #messages.
+// #empty-state is OUTSIDE #messages so it is never destroyed by this.
+function renderMessages() {
+  if (!activeChat) return;
+  const arr = cm[activeChat] || [];
+  const el  = document.getElementById('messages');
+
+  if (arr.length === 0) {
+    el.innerHTML = `<div style="margin:auto;color:var(--muted);font-size:13px">🔒 No messages yet — say hello!</div>`;
+    return;
+  }
+
+  let h = '';
+  arr.forEach(m => {
+    if (m.type === 'sys') {
+      h += `<div class="msg-row center"><div class="pill sys">${esc(m.text)}</div></div>`;
+    } else {
+      const out = (m.from === 'Me');
+      h += `<div class="msg-row ${out ? 'out' : 'in'}">`;
+      if (!out) h += `<div class="msg-sender">${esc(m.from)}</div>`;
+      h += `<div class="bubble">${esc(m.text)}</div>`;
+      h += `<div class="msg-time">${m.time || ''}</div>`;
+      h += `</div>`;
+    }
+  });
+
+  el.innerHTML = h;
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ── INCOMING CHAT MESSAGES ───────────────────────────────────── */
+sock.on('chat-msg', m => {
+  let ch;
+  if (m.group)        ch = 'GROUP';
+  else if (m.from === 'Me') ch = m.to;
+  else                ch = m.from;
+
+  if (!cm[ch]) cm[ch] = [];
+  cm[ch].push({ from: m.from, text: m.text, msgId: m.msgId, time: now() });
+  if (activeChat === ch) renderMessages();
+});
+
+/* ── SYSTEM MESSAGES (ECDH handshake etc.) ───────────────────── */
+sock.on('sys', text => {
+  // Show as pill in whichever chat is active (don't flood all channels)
+  if (activeChat && cm[activeChat]) {
+    cm[activeChat].push({ type: 'sys', text });
+    renderMessages();
+  }
+});
+
+/* ── RESTORE HISTORY (MYWORK) ─────────────────────────────────── */
+sock.on('mywork', mw => {
+  // `mw` is the list of messages involving this node, sorted by ts DESC.
+  // We reverse it to append from oldest to newest.
+  mw.sort((a,b) => a.ts - b.ts).forEach(m => {
+    // Note: group property is not saved in the vault, so they will show as DMs.
+    const isMe = m.fromNode === me;
+    const ch = isMe ? m.toNode : m.fromNode;
+
+    if (!cm[ch]) cm[ch] = [];
+    
+    // Avoid duplicates
+    if (!cm[ch].some(msg => msg.msgId === m.msgId)) {
+      cm[ch].push({
+        from: isMe ? 'Me' : m.fromNode,
+        to: m.toNode,
+        text: m.plaintext,
+        msgId: m.msgId,
+        time: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+  });
+
+  if (activeChat) renderMessages();
+});
+
+/* ── ONION RECOVERY EVENTS ────────────────────────────────────── */
+sock.on('RECOVERY_COMPLETE', data => {
+  const msgs = data.recoveredMessages || [];
+  msgs.forEach(msg => {
+    const ch = msg.from === me ? msg.to : msg.from;
+    if (!cm[ch]) cm[ch] = [];
+    if (!cm[ch].some(m => m.msgId === msg.msgId)) {
+      cm[ch].push({ from: msg.from === me ? 'Me' : msg.from, to: msg.to,
+                    text: msg.text, msgId: msg.msgId, time: now() });
+    }
+  });
+  if (activeChat) renderMessages();
+});
+
+/* ── SEND ─────────────────────────────────────────────────────── */
+function send() {
+  const inp  = document.getElementById('msg-input');
+  const text = inp.value.trim();
+  if (!text || !activeChat) return;
+  if (activeChat === 'GROUP') sock.emit('send-group', { text });
+  else                        sock.emit('send-dm',    { to: activeChat, text });
+  inp.value = '';
+  inp.focus();
+}
+
+document.getElementById('msg-input').addEventListener('keypress', e => {
+  if (e.key === 'Enter') send();
+});
+</script>
+</body>
+</html>

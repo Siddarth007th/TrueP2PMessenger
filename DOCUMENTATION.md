@@ -11,7 +11,7 @@ This prototype proves that thesis by building a fully functional E2EE P2P messen
 - Every node is a sovereign daemon (no central server exists)
 - Data at rest is always encrypted ciphertext
 - Nodes that relay messages they're not party to can never decrypt them (blind vault)
-- The mesh is self-healing — nodes discover peers, exchange keys, and route messages autonomously
+- The mesh is self-healing — nodes detect unsigned deletions, route recovery requests through onion-encrypted hops, and rehydrate lost data autonomously
 
 ---
 
@@ -94,10 +94,9 @@ A single `mesh-proof.js` script that:
 
 ---
 
-### Prototype 7: True P2P Messenger — THIS PROJECT (`/prototypes/true-p2p-messenger/`)
-**Goal:** The final, complete implementation. Zero centralization. Every node is sovereign.
+### Prototype 7 → Final: True P2P Messenger with Onion-Routed Recovery
 
-This is the prototype contained in this folder. Full details below.
+This is the prototype contained in this folder. Zero centralization. Every node is sovereign. Upgraded with a complete self-healing protocol in the final iteration, featuring a 4-node mesh, dual anomaly detection, and exponential vault replication.
 
 ---
 
@@ -110,126 +109,116 @@ This is the prototype contained in this folder. Full details below.
 │                    NO ROUTING PROXY                          │
 └─────────────────────────────────────────────────────────────┘
 
-  Node A (3001/4001)          Node B (3002/4002)          Node C (3003/4003)
-  ┌──────────────┐            ┌──────────────┐            ┌──────────────┐
-  │  Express UI  │            │  Express UI  │            │  Express UI  │
-  │  Socket.IO   │            │  Socket.IO   │            │  Socket.IO   │
-  ├──────────────┤            ├──────────────┤            ├──────────────┤
-  │  TCP Server  │◄──────────►│  TCP Server  │◄──────────►│  TCP Server  │
-  │  (port 4001) │   raw TCP  │  (port 4002) │   raw TCP  │  (port 4003) │
-  ├──────────────┤            ├──────────────┤            ├──────────────┤
-  │  node-A.db   │            │  node-B.db   │            │  node-C.db   │
-  │  (SQLite)    │            │  (SQLite)    │            │  (SQLite)    │
-  └──────────────┘            └──────────────┘            └──────────────┘
-       ▲                           ▲                           ▲
-       │                           │                           │
-       ▼                           ▼                           ▼
-  ┌──────────┐               ┌──────────┐               ┌──────────┐
-  │ Chat UI  │               │ Chat UI  │               │ Chat UI  │
-  │ Server   │               │ Server   │               │ Server   │
-  │ Dashboard│               │ Dashboard│               │ Dashboard│
-  └──────────┘               └──────────┘               └──────────┘
+  Node A       Node B       Node C       Node D
+  (4001)       (4002)       (4003)       (4004)
+  ┌────┐       ┌────┐       ┌────┐       ┌────┐
+  │ UI │       │ UI │       │ UI │       │ UI │
+  ├────┤       ├────┤       ├────┤       ├────┤
+  │ TCP│◄─────►│ TCP│◄─────►│ TCP│◄─────►│ TCP│
+  ├────┤       ├────┤       ├────┤       ├────┤
+  │ DB │       │ DB │       │ DB │       │ DB │
+  ├────┤       ├────┤       ├────┤       ├────┤
+  │HTTP│◄─────►│HTTP│◄─────►│HTTP│◄─────►│HTTP│
+  └────┘       └────┘       └────┘       └────┘
 ```
 
-Each node is a completely isolated process running:
-- **Express HTTP Server** — serves the chat UI and server dashboard
-- **Socket.IO WebSocket** — real-time UI updates
-- **TCP Mesh Socket** — raw `net.createServer()` / `net.connect()` for P2P routing
-- **SQLite Database** — isolated `better-sqlite3` instance (`node-A.db`, `node-B.db`, `node-C.db`)
+Each node runs:
+- **Express HTTP Server** — serves chat UI, server dashboard, and `POST /api/relay` for onion routing
+- **Socket.IO WebSocket** — real-time UI updates (messages, threat alerts, recovery events)
+- **TCP Mesh Socket** — raw `net.createServer()` / `net.connect()` for P2P message broadcast
+- **SQLite Database** — isolated `better-sqlite3` instance per node
+- **Dual Anomaly Detector** — background polling loop (5s interval) independently monitoring "My Work" and "Locker" (blind vault) deletions
+- **Onion Router** — 3-layer AES-256-GCM wrapping/peeling for recovery requests and replication payloads
+- **Rehydrator** — decrypts and re-inserts recovered rows, dynamically updating the chat UI
 
 ---
 
 ## 4. Cryptography — The State Machine
 
 ### Step 1: ECDH secp256k1 Key Exchange
-On boot, each node generates an ephemeral ECDH keypair on the `secp256k1` curve (the same curve used by Bitcoin):
-
-```
-ecdh = crypto.createECDH('secp256k1')
-ecdh.generateKeys()
-```
+On boot, each node generates an ephemeral ECDH keypair on the `secp256k1` curve (the same curve used by Bitcoin).
 
 ### Step 2: TCP Handshake
-When a TCP connection is established between two nodes, both sides immediately send a `hello` message containing their public key:
-
-```
-→  {"t":"hello","n":"A","pk":"04a1b2c3..."}
-←  {"t":"hello","n":"B","pk":"04d4e5f6..."}
-```
+When a TCP connection is established between two nodes, both sides immediately send a `hello` message containing their public key.
 
 ### Step 3: Shared Secret Derivation
-Each side computes the shared secret using their private key and the peer's public key, then hashes it into a 256-bit AES key:
-
-```
-sharedSecret = ecdh.computeSecret(peerPublicKey)
-aesKey = SHA-256(sharedSecret)
-```
-
-The mathematical property of ECDH guarantees that A's derived key equals B's derived key, without either side ever transmitting their private key.
+Each side computes the shared secret using their private key and the peer's public key, then hashes it into a 256-bit AES key. The mathematical property of ECDH guarantees that A's derived key equals B's derived key, without either side ever transmitting their private key. No node holds a key for a conversation it was not part of. This means Node C physically cannot decrypt A↔B messages — it is enforced by mathematics, not permissions.
 
 ### Step 4: AES-256-GCM Encryption
-Every message is encrypted using AES-256-GCM (Galois/Counter Mode), which provides both confidentiality and authenticity:
-
-```
-Encrypt → { nonce (12 bytes), tag (16 bytes), val (ciphertext) }
-```
-
-The nonce is a cryptographically random 12-byte IV generated fresh for every single message. The auth tag prevents tampering.
+Every message is encrypted using AES-256-GCM (Galois/Counter Mode), which provides both confidentiality and authenticity.
 
 ### Step 5: UI Blocking
-The frontend chat input and peer buttons remain **strictly disabled** until the backend confirms that the ECDH handshake with each specific peer is complete. This eliminates the "no key for peer" race condition from earlier prototypes.
+The frontend chat input and peer buttons remain **strictly disabled** until the backend confirms that the ECDH handshake with each specific peer is complete.
 
 ---
 
 ## 5. Message Flow
 
 ### Direct Message (A → B)
-
 1. Node A encrypts plaintext with B's AES key → produces `{nonce, tag, val}`
 2. A stores the ciphertext in its own local SQLite vault
-3. A broadcasts the ciphertext to **ALL** peers via TCP (B and C both receive it)
+3. A broadcasts the ciphertext to **ALL** peers via TCP (B, C, and D receive it)
 4. **Node B:** Sees `toNode === 'B'`, has A's AES key → **decrypts and displays plaintext**
-5. **Node C:** Sees `toNode !== 'C'` → **stores raw ciphertext as blind backup, never decrypts**
-
-### Group Message (A → B, C)
-
-1. Node A encrypts the plaintext **twice** — once with B's AES key, once with C's AES key
-2. This produces two separate ciphertext payloads with different nonces, tags, and vals
-3. A broadcasts both payloads to all peers
-4. **Node B:** Decrypts the copy addressed to B; stores the copy addressed to C as blind backup
-5. **Node C:** Decrypts the copy addressed to C; stores the copy addressed to B as blind backup
+5. **Nodes C & D:** See `toNode !== 'C'` → **store raw ciphertext as blind backup, never decrypt**
 
 ### Blind Vault Replication
-
-When a node receives a message that is NOT addressed to it:
-- It writes the raw ciphertext (nonce, tag, val) to its local SQLite vault
-- It does NOT attempt to decrypt it (it lacks the AES key for that conversation)
-- It does NOT display it in the chat UI
-- This provides distributed backup without compromising confidentiality
+When a node receives a message that is NOT addressed to it, it writes the raw ciphertext to its local SQLite vault (the "Locker"). It does not decrypt it, and the Chat UI remains unaware.
 
 ---
 
-## 6. The Server Dashboard — My Work vs. Locker
+## 6. Adaptive Vault Replication & Dual Self-Healing
 
-Each node serves a separate dashboard page at `/server.html` with two tabs:
+The protocol features a highly advanced, resilient self-healing mechanism that responds dynamically to threats.
+
+### Dual Anomaly Detection
+Every node monitors its own database for unsigned deletions every 5 seconds. It maintains two distinct sets:
+1. **My Work** — Messages this node participated in.
+2. **Locker** — Blind vault copies stored for other nodes.
+
+If a "Smart Attacker" wipes BOTH the My Work data and the Locker data, the system detects this simultaneously and fires independent threat events (`ANOMALY_DETECTED` and `LOCKER_ANOMALY`).
+
+### Onion-Routed Recovery
+When a threat is detected, missing IDs are wrapped in a **3-layer AES-256-GCM onion**.
+- **My Work Recovery**: The origin node sends requests through the mesh to retrieve the blind vault copies stored by peers.
+- **Locker Recovery**: The node sends requests to the originators of the conversations, asking them to resupply the blind vault ciphertext.
+
+### Exponential Vault Replication
+To prevent future data loss, the mesh adapts to attacks:
+- On every successful threat recovery, the **Replication Factor doubles** (1 → 2 → 4 → 8).
+- The node then dispatches `REPLICATE_VAULT` onion payloads across the mesh, forcefully spreading copies of the recovered data into ALL peer lockers simultaneously, maximizing redundancy.
+
+---
+
+## 7. The Server Dashboard
+
+Each node serves a dashboard at `/server.html` with three tabs:
 
 ### My Work Tab
-Queries the local SQLite vault for rows where `fromNode === thisNode OR toNode === thisNode`. Since the node participated in these conversations, it holds the AES key and can decrypt them. The dashboard displays the **decrypted plaintext**.
+Messages where `fromNode === thisNode OR toNode === thisNode`. The node holds the AES key so it displays **decrypted plaintext**.
 
 ### Locker Tab
-Queries the local SQLite vault for rows where `fromNode !== thisNode AND toNode !== thisNode`. These are blind replications from conversations the node was NOT part of. The node does NOT hold the AES key for these conversations. The dashboard displays the **raw encrypted ciphertext** (nonce, tag, val).
+Messages where `fromNode !== thisNode AND toNode !== thisNode`. These are blind replications from conversations the node was NOT part of. Displays **raw encrypted ciphertext**.
 
-This split proves the zero-knowledge property: every node stores data from all conversations in the mesh, but can only read the ones it participated in.
+### Threat Monitor Tab
+Real-time health dashboard showing:
+- **Vault Records** — Total owned messages.
+- **Locker Records** — Total blind vault copies.
+- **Replication Factor** — Current global redundancy factor (e.g., ×4).
+- **Threat Status** — Health status / active threats.
+- **Simulate Smart Wipe** — Deletes random records from BOTH My Work and the Locker without cryptographic signature, simulating a sophisticated attack.
+- **Live Event Timeline** — Human-readable logs of detections, onion routing, and exponential spread operations.
+
+*(Note: Threat alerts and recovery events are entirely hidden from the Chat UI (`index.html`) to ensure a clean user experience, as requested. Rehydrated messages simply reappear in the background.)*
 
 ---
 
-## 7. SQLite Vault Schema
+## 8. SQLite Vault Schema
 
 ```sql
 CREATE TABLE vault (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   msgId     TEXT UNIQUE,    -- UUID preventing duplicate ingestion
-  fromNode  TEXT,           -- sender node name (A, B, or C)
+  fromNode  TEXT,           -- sender node name
   toNode    TEXT,           -- intended recipient node name
   nonce     TEXT,           -- 12-byte random IV (hex)
   tag       TEXT,           -- 16-byte GCM auth tag (hex)
@@ -240,18 +229,22 @@ CREATE TABLE vault (
 
 ---
 
-## 8. File Reference
+## 9. File Reference
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `node-daemon.js` | 42 | The sovereign node daemon. Runs Express, TCP mesh, SQLite, ECDH/AES. |
-| `public/index.html` | ~70 | Clean 2-panel chat UI. Contacts on left, messages on right. |
-| `public/server.html` | ~66 | Server dashboard. My Work (decrypted) + Locker (encrypted) tabs. |
-| `launcher.js` | 11 | Spawns 3 isolated node processes, opens 6 browser tabs. |
+| File | Purpose |
+|------|---------|
+| `node-daemon.js` | Sovereign node daemon: Express + Socket.IO + TCP mesh + SQLite + Onion relay + Exponential replication logic |
+| `anomaly-detector.js` | Background worker: 5s poll, dual in-memory diffs (My Work + Locker) |
+| `onion-router.js` | `wrapOnion()` / `peelOnion()` / `wrapReturnOnion()` using AES-256-GCM per layer |
+| `rehydrator.js` | Decrypts recovered rows, restores locker rows, re-registers with anomaly detector |
+| `public/index.html` | Chat UI: ECDH wait overlay, peer contacts, message bubbles, phantom UI injection |
+| `public/server.html` | Server dashboard: My Work, Locker, Threat Monitor, Timeline, Smart Wipe |
+| `launcher.js` | Spawns 4 isolated node processes, opens 8 browser tabs |
+| `test-recovery.js` | Automated E2E test verifying dual detection, recovery, and exponential replication |
 
 ---
 
-## 9. How to Run
+## 10. How to Run
 
 ```bash
 node launcher.js
@@ -259,55 +252,90 @@ node launcher.js
 
 This will:
 1. Delete any stale `.db` files from previous runs
-2. Spawn Node A (UI: 3001, TCP: 4001)
-3. Spawn Node B (UI: 3002, TCP: 4002)
-4. Spawn Node C (UI: 3003, TCP: 4003)
-5. Open 6 browser tabs (chat + server dashboard per node)
+2. Spawn 4 nodes (A, B, C, D) binding to TCP ports 4001-4004
+3. Open 8 browser tabs (chat + server dashboard per node)
 
-The nodes will automatically:
-- Bind their TCP mesh servers
-- Connect to each other with retry logic (500ms backoff)
-- Exchange ECDH public keys over raw TCP
-- Derive AES-256-GCM shared secrets
-- Unlock the UI once all handshakes complete
+The nodes will automatically connect, exchange ECDH keys, and unlock the UI.
+
+To run the automated recovery test (requires the mesh to be running):
+```bash
+node test-recovery.js
+```
 
 ---
 
-## 10. Verified Test Results
+## 11. Verified Test Results
 
-An automated headless test was run to verify the complete flow:
-
+### Adaptive Vault Replication E2E Test (Verified)
 ```
-PASS: B My Work has A→B msg
-PASS: B My Work is DECRYPTED
-PASS: B Locker has blind A→C copy
-PASS: B Locker is RAW CIPHERTEXT
-PASS: C My Work has A→C msg
-PASS: C My Work is DECRYPTED
-PASS: C Locker has blind A→B copy
-PASS: C Locker is RAW CIPHERTEXT (not plaintext)
+=== Adaptive Vault Replication E2E Test ===
+
+1. Waiting for mesh-ready on Node A...
+  PASS: Mesh is ready (A has 3 peers)
+
+2. Sending messages: A→B, A→C, B→C...
+  PASS: A My Work has at least 2 rows
+  PASS: A→B message found in A My Work
+  PASS: A Locker has at least 1 row (B→C)
+  PASS: D Locker has rows (blind vault)
+
+3. Simulating SMART wipe on Node A (My Work + Locker)...
+  Pre-wipe: 2 My Work, 1 Locker
+  [A Sys] 🗑️ SMART WIPE: 2 My Work + 1 Locker record(s) deleted without signature
+  Post-wipe: 0 My Work, 0 Locker
+  PASS: My Work or Locker reduced after wipe
+
+4. Waiting for anomaly detection (My Work + Locker)...
+  [A Event] ANOMALY_DETECTED: 2 My Work missing
+  [A Sys] ⚠️ ANOMALY: 2 My Work record(s) deleted without cryptographic signature
+  [A Sys] ⚡ Replication factor doubled to ×2
+  [A Sys] 🧅 Initiating onion-routed mywork recovery for 2 record(s)...
+  [A Event] LOCKER_ANOMALY: 1 Locker missing
+  [A Sys] ⚠️ LOCKER ANOMALY: 1 blind vault record(s) deleted without cryptographic signature
+  [A Sys] 🧅 Initiating onion-routed locker recovery for 1 record(s)...
+  [A Sys] ✅ Locker recovery complete: 1 blind vault record(s) restored
+  [A Event] RECOVERY_COMPLETE: 2 message(s)
+  [A Sys] ✅ Recovery complete: 2 record(s) restored via onion routing
+  PASS: My Work anomaly detected
+  PASS: Locker anomaly detected
+
+5. Recovery already completed via auto-trigger
+  PASS: Recovery complete event received
+  PASS: At least 1 My Work message recovered
+  PASS: Correct message text recovered (A→B)
+  PASS: Rehydration stats received
+  PASS: Rehydration recovered > 0
+  PASS: Rehydration failed === 0
+
+6. Checking replication factor...
+  PASS: Replication status received
+  PASS: Replication factor >= 2 after threat
+  Replication factor: ×2
+
+7. Waiting for vault replication to spread...
+  [A Sys] 📡 Spreading 2 record(s) across 3 peer lockers (replication factor: ×2)
+  [A Event] REPLICATION_SPREAD: factor ×2, 2 rows to 3 peers
+  PASS: Replication spread event received on A
+  PASS: Node D received replicated data
+
+8. Verifying restored data on Node A...
+  PASS: A→B message restored in A My Work
+  PASS: A→C message restored in A My Work
+
 =============================
-Passed: 12 | Failed: 0
+Passed: 20 | Failed: 0
+=============================
 ```
 
 ---
 
-## 11. Dependencies
+## 12. Security Properties
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `express` | ^5.x | HTTP server for serving UI |
-| `socket.io` | ^4.x | Real-time WebSocket for UI updates |
-| `better-sqlite3` | ^11.x | Synchronous SQLite3 bindings for Node.js |
-
-All cryptography uses Node.js native `crypto` module — no third-party crypto libraries.
-
----
-
-## 12. What This Proves
-
-1. **Zero Centralization:** No central server, router, or shared database exists in the system.
+1. **No Central Authority:** Every node is a sovereign daemon. There is no server, no routing proxy, no shared database.
 2. **Zero-Knowledge at Rest:** Every row in every node's SQLite database contains only encrypted ciphertext, nonces, and auth tags. Plaintext never touches disk.
 3. **Cryptographic Access Control:** Only the intended recipient can decrypt a message. Access is enforced by mathematics (ECDH key derivation), not by server-side permissions.
 4. **Blind Vault Replication:** Nodes faithfully store and replicate ciphertexts from conversations they're not party to, enabling distributed backup without compromising confidentiality.
-5. **Self-Healing Mesh:** Nodes auto-discover peers, retry failed connections, and complete the ECDH handshake autonomously. The UI strictly blocks until the mesh is secured.
+5. **Dual Self-Healing Mesh:** Anomaly detection fires independently on unsigned deletions from both My Work and Locker. Onion-routed recovery wraps requests in 3-layer AES-256-GCM encryption, routes them through the peer mesh, retrieves blind vault backups, and rehydrates the origin node — all within ~5 seconds, automatically.
+6. **Exponential Vault Replication:** Each threat doubles the replication factor, spreading recovered data across all peer lockers via onion routing for maximum redundancy.
+7. **Onion Routing Privacy:** Intermediate relay nodes never see the recovery payload or final destination. Each node only knows the next hop, identical in principle to Tor circuit construction.
+
