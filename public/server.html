@@ -487,9 +487,12 @@ sock.on('REPLICATION_SPREAD', data => {
 });
 
 sock.on('REPLICATION_RECEIVED', data => {
+  const newCount = data.newStored || 0;
+  const verified = data.alreadySecured || 0;
+  const factor = data.factor || 1;
   addEvent('replicate',
-    `📡 Replication Received from Node ${data.from}`,
-    `${data.stored} new record(s) stored in local locker as blind vault copies`,
+    `📡 Vault Sync from Node ${data.from} — ×${factor} Factor`,
+    `${newCount} new record(s) stored + ${verified} already secured (${data.total} total verified across mesh)`,
     data.timestamp
   );
 });

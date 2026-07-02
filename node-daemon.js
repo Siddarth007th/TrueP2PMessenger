@@ -53,7 +53,7 @@ s.write(JSON.stringify({t:'hello',n:nm,pk:myPk})+'\n');
 let buf='';
 s.on('data',d=>{buf+=d.toString();const ls=buf.split('\n');buf=ls.pop();ls.forEach(l=>{try{const m=JSON.parse(l);
 if(m.t==='hello'&&m.n!==nm){if(!keys[m.n]){keys[m.n]=crypto.createHash('sha256').update(ecdh.computeSecret(Buffer.from(m.pk,'hex'))).digest();ready.add(m.n);peerPortMap[m.n]=TOPOLOGY[m.n];io.emit('peer-ready',m.n);io.emit('sys',`ECDH secp256k1 handshake with Node ${m.n} → AES-256-GCM key derived`);if(ready.size>=pp.length)io.emit('mesh-ready');}if(!socks[m.n])socks[m.n]=[];if(!socks[m.n].includes(s))socks[m.n].push(s);}
-if(m.t==='msg'&&!seen.has(m.id)){seen.add(m.id);store(m);if(m.to===nm&&keys[m.from]){const txt=dec(keys[m.from],m.nonce,m.tag,m.val);if(txt)io.emit('chat-msg',{from:m.from,text:txt,group:!!m.group,msgId:m.id});}}
+if(m.t==='msg'&&!seen.has(m.id)){seen.add(m.id);if(m.from===nm||m.to===nm){store(m);}if(m.to===nm&&keys[m.from]){const txt=dec(keys[m.from],m.nonce,m.tag,m.val);if(txt)io.emit('chat-msg',{from:m.from,text:txt,group:!!m.group,msgId:m.id});}}
 }catch{}});});
 s.on('close',()=>{for(const p in socks)socks[p]=socks[p].filter(x=>x!==s);});
 s.on('error',()=>{});
@@ -206,19 +206,26 @@ app.post('/api/relay', async (req, res) => {
     const insertStmt2 = db.prepare(
       'INSERT OR IGNORE INTO vault(msgId, fromNode, toNode, nonce, tag, val, ts) VALUES(?, ?, ?, ?, ?, ?, ?)'
     );
+    const checkStmt = db.prepare('SELECT 1 FROM vault WHERE msgId = ?');
 
-    let stored = 0;
+    let newStored = 0;
+    let alreadySecured = 0;
     for (const row of payload.rows) {
       try {
+        // Check if we already have it
+        const exists = checkStmt.get(row.msgId);
+        if (exists) {
+          alreadySecured++;
+          continue;
+        }
         const result = insertStmt2.run(
           row.msgId, row.fromNode, row.toNode,
           row.nonce, row.tag, row.val,
           row.ts || Date.now()
         );
         if (result.changes > 0) {
-          stored++;
+          newStored++;
           if (detector) {
-            // Track as appropriate
             if (row.fromNode === nm || row.toNode === nm) {
               detector.track(row.msgId);
             } else {
@@ -229,18 +236,20 @@ app.post('/api/relay', async (req, res) => {
       } catch {}
     }
 
-    console.log(`[Relay] Node ${nm}: replicated ${stored}/${payload.rows.length} rows into vault`);
+    console.log(`[Relay] Node ${nm}: replicated ${newStored} new + ${alreadySecured} verified / ${payload.rows.length} total from ${payload.originNode}`);
 
     io.emit('REPLICATION_RECEIVED', {
       from: payload.originNode,
-      stored,
+      newStored,
+      alreadySecured,
       total: payload.rows.length,
+      factor: payload.replicationFactor || 1,
       timestamp: Date.now(),
     });
-    io.emit('sys', `📡 Received ${stored} replicated vault record(s) from Node ${payload.originNode}`);
+    io.emit('sys', `📡 Vault sync from Node ${payload.originNode}: ${newStored} new + ${alreadySecured} verified (×${payload.replicationFactor || 1} factor)`);
     emitServer();
 
-    return res.json({ status: 'replicated', stored });
+    return res.json({ status: 'replicated', newStored, alreadySecured });
   }
 
   return res.json({ status: 'processed' });
@@ -338,8 +347,10 @@ async function initiateRecovery(missingIds, recoveryType = 'mywork') {
  *
  * @param {Array} rows - The rows to replicate
  */
-async function replicateVault(rows) {
+async function replicateVault() {
   const peers = Object.keys(keys);
+  // Gather ALL vault data (My Work + Locker) for full replication
+  const rows = db.prepare('SELECT * FROM vault').all();
   if (peers.length < 1 || rows.length === 0) return;
 
   console.log(`[Replication] Node ${nm}: spreading ${rows.length} row(s) to ${peers.length} peers (factor: ${replicationFactor})`);
@@ -480,15 +491,10 @@ http.listen(parseInt(uiP),()=>{
       console.log(`[Threat] Node ${nm}: replication factor → ×${replicationFactor}`);
 
       initiateRecovery(missingIds, 'mywork').then(() => {
-        // After recovery, spread data to peers
+        // After recovery completes, spread entire vault to peers
         setTimeout(() => {
-          const allRows = db.prepare(
-            'SELECT * FROM vault WHERE fromNode = ? OR toNode = ?'
-          ).all(nm, nm);
-          if (allRows.length > 0) {
-            replicateVault(allRows);
-          }
-        }, 3000);
+          replicateVault();
+        }, 5000);
       });
     },
     // Locker anomaly callback

@@ -250,8 +250,15 @@ const sock = io();
 let me = '', activeChat = null;
 let readyPeers = new Set(), meshReady = false, allPeers = [];
 
-// Per-channel message arrays: cm[peer] = [{type, from, text, time, msgId?, recovered?}]
+// Per-channel message arrays: cm[peer] = [{type, from, text, time, msgId?}]
 const cm = {};
+
+// Set of all known msgIds for global deduplication
+const seenMsgIds = new Set();
+
+// Flag: only load history from `mywork` ONCE on initial connect.
+// After that, all real-time updates come exclusively from `chat-msg`.
+let historyLoaded = false;
 
 function now() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -269,6 +276,8 @@ sock.on('init', d => {
   allPeers = ['A','B','C','D'].filter(x => x !== me);
   allPeers.forEach(p => cm[p] = []);
   cm['GROUP'] = [];
+  historyLoaded = false;
+  seenMsgIds.clear();
   renderContacts();
 });
 
@@ -338,8 +347,6 @@ function openChat(peer) {
 }
 
 /* ── RENDER MESSAGES ──────────────────────────────────────────── */
-// Builds HTML from cm[activeChat] and sets it on #messages.
-// #empty-state is OUTSIDE #messages so it is never destroyed by this.
 function renderMessages() {
   if (!activeChat) return;
   const arr = cm[activeChat] || [];
@@ -368,8 +375,12 @@ function renderMessages() {
   el.scrollTop = el.scrollHeight;
 }
 
-/* ── INCOMING CHAT MESSAGES ───────────────────────────────────── */
+/* ── INCOMING CHAT MESSAGES (REAL-TIME — primary source) ─────── */
 sock.on('chat-msg', m => {
+  // Deduplicate: skip if we already have this msgId
+  if (m.msgId && seenMsgIds.has(m.msgId)) return;
+  if (m.msgId) seenMsgIds.add(m.msgId);
+
   let ch;
   if (m.group)        ch = 'GROUP';
   else if (m.from === 'Me') ch = m.to;
@@ -382,34 +393,38 @@ sock.on('chat-msg', m => {
 
 /* ── SYSTEM MESSAGES (ECDH handshake etc.) ───────────────────── */
 sock.on('sys', text => {
-  // Show as pill in whichever chat is active (don't flood all channels)
   if (activeChat && cm[activeChat]) {
     cm[activeChat].push({ type: 'sys', text });
     renderMessages();
   }
 });
 
-/* ── RESTORE HISTORY (MYWORK) ─────────────────────────────────── */
+/* ── RESTORE HISTORY (MYWORK — one-time on connect only) ─────── */
 sock.on('mywork', mw => {
-  // `mw` is the list of messages involving this node, sorted by ts DESC.
-  // We reverse it to append from oldest to newest.
+  // Only use mywork for initial history restore.
+  // After that, chat-msg handles all real-time updates.
+  if (historyLoaded) return;
+  historyLoaded = true;
+
   mw.sort((a,b) => a.ts - b.ts).forEach(m => {
-    // Note: group property is not saved in the vault, so they will show as DMs.
+    if (m.msgId && seenMsgIds.has(m.msgId)) return;
+    if (m.msgId) seenMsgIds.add(m.msgId);
+
     const isMe = m.fromNode === me;
     const ch = isMe ? m.toNode : m.fromNode;
 
     if (!cm[ch]) cm[ch] = [];
-    
-    // Avoid duplicates
-    if (!cm[ch].some(msg => msg.msgId === m.msgId)) {
-      cm[ch].push({
-        from: isMe ? 'Me' : m.fromNode,
-        to: m.toNode,
-        text: m.plaintext,
-        msgId: m.msgId,
-        time: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      });
-    }
+
+    // Skip messages with placeholder text (key not yet derived)
+    if (m.plaintext === '[awaiting key]' || m.plaintext === '[decrypt error]') return;
+
+    cm[ch].push({
+      from: isMe ? 'Me' : m.fromNode,
+      to: m.toNode,
+      text: m.plaintext,
+      msgId: m.msgId,
+      time: new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
   });
 
   if (activeChat) renderMessages();
@@ -419,12 +434,13 @@ sock.on('mywork', mw => {
 sock.on('RECOVERY_COMPLETE', data => {
   const msgs = data.recoveredMessages || [];
   msgs.forEach(msg => {
+    if (msg.msgId && seenMsgIds.has(msg.msgId)) return;
+    if (msg.msgId) seenMsgIds.add(msg.msgId);
+
     const ch = msg.from === me ? msg.to : msg.from;
     if (!cm[ch]) cm[ch] = [];
-    if (!cm[ch].some(m => m.msgId === msg.msgId)) {
-      cm[ch].push({ from: msg.from === me ? 'Me' : msg.from, to: msg.to,
-                    text: msg.text, msgId: msg.msgId, time: now() });
-    }
+    cm[ch].push({ from: msg.from === me ? 'Me' : msg.from, to: msg.to,
+                  text: msg.text, msgId: msg.msgId, time: now() });
   });
   if (activeChat) renderMessages();
 });
@@ -446,3 +462,4 @@ document.getElementById('msg-input').addEventListener('keypress', e => {
 </script>
 </body>
 </html>
+
